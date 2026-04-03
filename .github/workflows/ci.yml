@@ -49,3 +49,21 @@ jobs:
           tags: |
             ghcr.io/abderrahmanezaidi/app1-frontend:${{ github.sha }}
             ghcr.io/abderrahmanezaidi/app1-frontend:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Show manifests ready for deployment
+        run: |
+          echo "=== Manifests prets pour deploiement k3s ==="
+          ls k8s/
+          echo "=== Images deployees ==="
+          echo "ghcr.io/abderrahmanezaidi/app1-frontend:latest"
+          echo "ghcr.io/abderrahmanezaidi/app2-api:latest"
+          echo "=== Commande de deploiement ==="
+          echo "kubectl apply -f k8s/"
