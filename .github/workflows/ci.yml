@@ -11,8 +11,95 @@ env:
   IMAGE_NAMESPACE: abderrahmanezaidi
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        app-dir: [app1-frontend, app2-api]
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.app-dir }}
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        working-directory: ${{ matrix.app-dir }}
+        run: python -m unittest
+
+  security:
+    runs-on: ubuntu-latest
+    needs: test
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Detect hardcoded secrets with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip pip-audit
+
+      - name: Audit app1 dependencies
+        run: pip-audit -r app1-frontend/requirements.txt
+
+      - name: Audit app2 dependencies
+        run: pip-audit -r app2-api/requirements.txt
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build app2 image for Trivy scan
+        run: docker build -t app2-api-security:${{ github.sha }} ./app2-api
+
+      - name: Scan app2 image with Trivy
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: app2-api-security:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Build app1 image for Trivy scan
+        run: docker build -t app1-frontend-security:${{ github.sha }} ./app1-frontend
+
+      - name: Scan app1 image with Trivy
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: app1-frontend-security:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
   build-and-push:
     runs-on: ubuntu-latest
+    needs: security
 
     permissions:
       contents: read
@@ -51,19 +138,19 @@ jobs:
             ghcr.io/abderrahmanezaidi/app1-frontend:latest
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Show manifests ready for deployment
-        run: |
-          echo "=== Manifests prets pour deploiement k3s ==="
-          ls k8s/
-          echo "=== Images deployees ==="
-          echo "ghcr.io/abderrahmanezaidi/app1-frontend:latest"
-          echo "ghcr.io/abderrahmanezaidi/app2-api:latest"
-          echo "=== Commande de deploiement ==="
-          echo "kubectl apply -f k8s/"
+      - name: Deploy to k3s
+        shell: bash
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAMESPACE: ${{ env.IMAGE_NAMESPACE }}
+          IMAGE_TAG: ${{ github.sha }}
+          USE_REGISTRY_IMAGES: "true"
+        run: bash scripts/deploy-k3s.sh
