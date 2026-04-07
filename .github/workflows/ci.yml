@@ -75,7 +75,7 @@ jobs:
         run: docker build -t app2-api-security:${{ github.sha }} ./app2-api
 
       - name: Scan app2 image with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: app2-api-security:${{ github.sha }}
           format: table
@@ -88,7 +88,7 @@ jobs:
         run: docker build -t app1-frontend-security:${{ github.sha }} ./app1-frontend
 
       - name: Scan app1 image with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: app1-frontend-security:${{ github.sha }}
           format: table
@@ -154,3 +154,4 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           USE_REGISTRY_IMAGES: "true"
         run: bash scripts/deploy-k3s.sh
+
